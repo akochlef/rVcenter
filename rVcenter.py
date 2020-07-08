@@ -16,7 +16,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 from datetime import datetime
 
-_VERSION = '1.1'
+_VERSION = '1.2'
 _PATH = '.rvc'
 _FILE = 'session.json'
 _SESSION = requests.Session()
