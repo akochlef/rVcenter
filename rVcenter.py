@@ -284,7 +284,7 @@ def print_help(command):
 	print(f'{command} stop <VM Name> : Stops the virtual machine.')
 	print(f'{command} inventory <text|csv|json> : Prints the full vCenter virtual machines inventory.')
 	print(f'{command} tree : Prints the virtual environment architecture in a tree format.')
-	print(f'{command} <datacenter|cluster|host|vm> list: Prints the all the objects in the list.')
+	print(f'{command} <datacenter|cluster|host|vm> list: Prints all the objects in the list.')
 	print(f'{command} help : Prints this help.')
 	print('===========================================================')
 
