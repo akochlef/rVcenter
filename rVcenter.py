@@ -4,6 +4,8 @@
 # 7/1/2020: Version 1.0 released
 # 7/1/2020: Added summary
 # 7/1/2020: Version 1.1 released
+# 7/8/2020: Added list and tree switches 
+# 7/8/2020: Version 1.2 released
 
 import json
 import os
@@ -14,7 +16,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 from datetime import datetime
 
-_VERSION = '1.1'
+_VERSION = '1.2'
 _PATH = '.rvc'
 _FILE = 'session.json'
 _SESSION = requests.Session()
@@ -191,6 +193,83 @@ def get_summary(path,file):
 	print(f'Total Allocated CPUs: \t\t{TOTAL_CPU}')
 	print(f'Total Allocated RAM: \t\t{TOTAL_MEM} MiB\n')
 		
+def get_vm_list(path,file):
+	sp = load_session_paramters(path,file)
+	vc=sp.get('vc')
+	url = f'https://{vc}/rest/vcenter/vm'
+	vms = session_get_json(_SESSION,url)
+	for vm in vms:
+		print(vm.get('name'))
+
+def get_datacenter_list(path,file):
+	sp = load_session_paramters(path,file)
+	vc=sp.get('vc')
+	url = f'https://{vc}/rest/vcenter/datacenter'
+	datacenters = session_get_json(_SESSION,url)
+	for datacenter in datacenters:
+		print(datacenter.get('name'))
+
+def get_host_list(path,file):
+	sp = load_session_paramters(path,file)
+	vc=sp.get('vc')
+	url = f'https://{vc}/rest/vcenter/host'
+	hosts = session_get_json(_SESSION,url)
+	for host in hosts:
+		print(host.get('name'))
+
+def get_cluster_list(path,file):
+	sp = load_session_paramters(path,file)
+	vc=sp.get('vc')
+	url = f'https://{vc}/rest/vcenter/cluster'
+	clusters = session_get_json(_SESSION,url)
+	for cluster in clusters:
+		print(cluster.get('name'))
+
+def get_architecture(path,file):
+	sp = load_session_paramters(path,file)
+	vc=sp.get('vc')
+	url = f'https://{vc}/rest/vcenter/datacenter'
+	datacenters = session_get_json(_SESSION,url)
+	d = 1
+	print('.')
+	for datacenter in datacenters:
+		D=datacenter.get('name')
+		if(d==len(datacenters)):
+			SD  = '└── '
+			SDC = '    '
+		else:
+			SD  = '├── '
+			SDC = '│   '
+		print(SD+D)
+		clusters = get_clusters_by_datacenter(vc,datacenter.get('datacenter'))
+		c = 1
+		for cluster in clusters:
+			C=cluster.get('name')
+			if(c==len(clusters)):
+				SC  = '└── '
+				SCH = '    '
+			else:
+				SC  = '├── '
+				SCH = '│   '
+			print(SDC+SC+C)
+			hosts = get_hosts_by_cluster(vc,cluster.get('cluster'))
+			h = 1
+			for host in hosts:
+				H=host.get('name')
+				if(h==len(hosts)):
+					SH =  '└── '
+				else:
+					SH  = '├── '
+				print(SDC+SCH+SH+H)
+				#vms = get_vms_by_host(vc,host.get('host'))
+				#for vm in vms:
+				#	V=vm.get('name')
+				#	POWER=vm.get('power_state')
+				#	CPU=vm.get('cpu_count')
+				#	MEM=vm.get('memory_size_MiB')
+				h += 1
+			c += 1
+		d += 1		
 
 def print_help(command):
 	print('===========================================================')
@@ -204,6 +283,8 @@ def print_help(command):
 	print(f'{command} start <VM Name> : Starts the virtual machine.')
 	print(f'{command} stop <VM Name> : Stops the virtual machine.')
 	print(f'{command} inventory <text|csv|json> : Prints the full vCenter virtual machines inventory.')
+	print(f'{command} tree : Prints the virtual environment architecture in a tree format.')
+	print(f'{command} <datacenter|cluster|host|vm> list: Prints all the objects in the list.')
 	print(f'{command} help : Prints this help.')
 	print('===========================================================')
 
@@ -230,6 +311,26 @@ if __name__ == "__main__":
 	if (len(sys.argv)==2 and sys.argv[1]=='summary'):
 		if(create_session(_PATH,_FILE)):
 			get_summary(_PATH,_FILE)
+	
+	if (len(sys.argv)==3 and sys.argv[1]=='vm' and sys.argv[2]=='list'):
+		if(create_session(_PATH,_FILE)):
+			get_vm_list(_PATH,_FILE)
+	
+	if (len(sys.argv)==3 and sys.argv[1]=='datacenter' and sys.argv[2]=='list'):
+		if(create_session(_PATH,_FILE)):
+			get_datacenter_list(_PATH,_FILE)
+	
+	if (len(sys.argv)==3 and sys.argv[1]=='host' and sys.argv[2]=='list'):
+		if(create_session(_PATH,_FILE)):
+			get_host_list(_PATH,_FILE)
+	
+	if (len(sys.argv)==3 and sys.argv[1]=='cluster' and sys.argv[2]=='list'):
+		if(create_session(_PATH,_FILE)):
+			get_cluster_list(_PATH,_FILE)
+	
+	if (len(sys.argv)==2 and sys.argv[1]=='tree'):
+		if(create_session(_PATH,_FILE)):
+			get_architecture(_PATH,_FILE)
 ##########################################################################
 
 
