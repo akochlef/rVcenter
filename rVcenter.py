@@ -15,6 +15,7 @@ import sys
 import getpass
 import requests
 import time
+import syslog
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 from datetime import datetime
@@ -86,10 +87,10 @@ def session_parameters_input(path,file):
 	save_session_parameters(path,file,vc,username,password)
 
 def settings_input(path,file):
-	poll_interval = input('Poll interval (seconds): ')
-	logfile = input('Log file: ')
-	console = input('Console output yes|no: ')
-	settings = {'poll_interval': poll_interval, 'logfile': logfile,  'console': console}
+	poll_interval = input('Poll interval in seconds: ')
+	syslog_switch = input('Syslog (true/false): ')
+	console_switch = input('Console (true/false): ')
+	settings = {'poll_interval': poll_interval, 'syslog': syslog_switch,  'console': console_switch}
 	if not os.path.exists(path):
 		os.makedirs(path)
 	with open(path + '/' + file, 'w') as fout:
@@ -187,9 +188,11 @@ def vm_compare(ts,vm0,vm1):
 		log += f"{ts} {vm0['vm']} RAM changed from {vm0['memory_size_MiB']} to {vm1['memory_size_MiB']}\n"
 	return log
 
-def compare(inventory0,inventory1):
-	ts = f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} [rVcenter]'
-	log = ''
+def compare(vcenter,inventory0,inventory1):
+	#ts = f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} [{vcenter}]'
+	#log = f'{ts} inventory compare.\n'
+	ts = f'[{vcenter}]'
+	log=''
 	for _vm1 in inventory1:
 		found = 0
 		vm1=inventory1[_vm1]
@@ -216,17 +219,19 @@ def monitor(path,file,settings_file):
 	vc=sp.get('vc')
 	settings = load_json(path,settings_file)
 	pi = int(settings.get('poll_interval'))
-	logfile = settings.get('logfile')
-	console = settings.get('console')
+	syslog_switch = settings.get('syslog')
+	console_switch = settings.get('console')
 	I0 = pull_inventory(path,file)
 	while True:
 		time.sleep(pi)
 		I1 = pull_inventory(path,file)
-		log = compare(I0,I1)
-		if((len(logfile)>0)and(len(log)>0)):
-			save_log(path,logfile,log)
-		if((console.upper()=='YES')and(len(log)>0)):
-			print(log)
+		log = compare(vc,I0,I1)
+		if(log==''):
+			log = f'[{vc}] inventory check.'
+		if(console_switch.upper()=='TRUE'):
+			print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ' + log)
+		if(syslog_switch.upper()=='TRUE'):
+			syslog.syslog(log)
 		I0 = I1
 		
 def save_inventory(path,file,inventory_file):
