@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.7
 
 # Anis Kochlef (akochlef@gmail.com)
 # 7/1/2020: Version 1.0 released
