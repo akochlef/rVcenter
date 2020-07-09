@@ -34,6 +34,15 @@ def save_log(path,file,log):
 		fout.write(log)
 		fout.close()
 
+def log_dispatch(syslog_switch,console_switch,vcenter,log):
+	timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+	if(console_switch.upper()=='TRUE'):
+		print(timestamp,vcenter,log)
+	if(syslog_switch.upper()=='TRUE'):
+		m = f'{vcenter} {log}'
+		syslog.syslog(m)
+	
+
 def save_session_parameters(path,file,vc,username,password):
 	sp = {'vc': vc,  'username': username, 'password': password}
 	if not os.path.exists(path):
@@ -175,24 +184,22 @@ def pull_inventory(path,file):
 					i+=1
 	return DICT
 
-def vm_compare(ts,vm0,vm1):
-	# VM compare
-	log = ''
+def vm_compare(vcenter,syslog_switch,console_switch,vm0,vm1):
 	if((vm0['datacenter']!=vm1['datacenter'])or(vm0['cluster']!=vm1['cluster'])or(vm0['host']!=vm1['host'])):
-		log += f"{ts} {vm0['vm']} moved from {vm0['datacenter']}:{vm0['cluster']}:{vm0['host']} to {vm1['datacenter']}:{vm1['cluster']}:{vm1['host']}\n"
+		log = f"{vm0['vm']} moved from {vm0['datacenter']}:{vm0['cluster']}:{vm0['host']} to {vm1['datacenter']}:{vm1['cluster']}:{vm1['host']}"
+		log_dispatch(syslog_switch,console_switch,vcenter,log)
 	if(vm0['power_state']!=vm1['power_state']):
-		log += f"{ts} {vm0['vm']} power state changed from {vm0['power_state']} to {vm1['power_state']}\n"
+		log = f"{vm0['vm']} power state changed from {vm0['power_state']} to {vm1['power_state']}"
+		log_dispatch(syslog_switch,console_switch,vcenter,log)
 	if(vm0['cpu_count']!=vm1['cpu_count']):
-		log += f"{ts} {vm0['vm']} CPU count changed from {vm0['cpu_count']} to {vm1['cpu_count']}\n"
+		log = f"{vm0['vm']} CPU count changed from {vm0['cpu_count']} to {vm1['cpu_count']}"
+		log_dispatch(syslog_switch,console_switch,vcenter,log)
 	if(vm0['memory_size_MiB']!=vm1['memory_size_MiB']):
-		log += f"{ts} {vm0['vm']} RAM changed from {vm0['memory_size_MiB']} to {vm1['memory_size_MiB']}\n"
-	return log
+		log = f"{vm0['vm']} RAM changed from {vm0['memory_size_MiB']} to {vm1['memory_size_MiB']}"
+		log_dispatch(syslog_switch,console_switch,vcenter,log)
 
-def compare(vcenter,inventory0,inventory1):
-	#ts = f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} [{vcenter}]'
-	#log = f'{ts} inventory compare.\n'
-	ts = f'[{vcenter}]'
-	log=''
+
+def compare(vcenter,syslog_switch,console_switch,inventory0,inventory1):
 	for _vm1 in inventory1:
 		found = 0
 		vm1=inventory1[_vm1]
@@ -200,9 +207,10 @@ def compare(vcenter,inventory0,inventory1):
 			vm0=inventory0[_vm0]
 			if(vm0['vmid']==vm1['vmid']):
 				found = 1
-				log += vm_compare(ts,vm0,vm1)
+				vm_compare(vcenter,syslog_switch,console_switch,vm0,vm1)
 		if(found==0):
-			log += f"{ts} Added VM {vm1['vm']}: datacenter={vm1['datacenter']}, cluster={vm1['cluster']}, host={vm1['host']}, power state={vm1['power_state']}, cpu={vm1['cpu_count']}, ram={vm1['memory_size_MiB']}\n"
+			log = f"Added VM {vm1['vm']}: datacenter={vm1['datacenter']}, cluster={vm1['cluster']}, host={vm1['host']}, power state={vm1['power_state']}, cpu={vm1['cpu_count']}, ram={vm1['memory_size_MiB']}"
+			log_dispatch(syslog_switch,console_switch,vcenter,log)
 	for _vm0 in inventory0:
 		vm0=inventory0[_vm0]
 		found = 0
@@ -211,8 +219,8 @@ def compare(vcenter,inventory0,inventory1):
 			if(vm0['vmid']==vm1['vmid']):
 				found = 1
 		if(found==0):
-			log += f"{ts} Removed VM {vm0['vm']}: datacenter={vm0['datacenter']}, cluster={vm0['cluster']}, host={vm0['host']}, power state={vm0['power_state']}, cpu={vm0['cpu_count']}, ram={vm0['memory_size_MiB']}\n"	
-	return log
+			log = f"Removed VM {vm0['vm']}: datacenter={vm0['datacenter']}, cluster={vm0['cluster']}, host={vm0['host']}, power state={vm0['power_state']}, cpu={vm0['cpu_count']}, ram={vm0['memory_size_MiB']}"	
+			log_dispatch(syslog_switch,console_switch,vcenter,log)
 	
 def monitor(path,file,settings_file):
 	sp = load_session_paramters(path,file)
@@ -225,13 +233,8 @@ def monitor(path,file,settings_file):
 	while True:
 		time.sleep(pi)
 		I1 = pull_inventory(path,file)
-		log = compare(vc,I0,I1)
-		if(log==''):
-			log = f'[{vc}] inventory check.'
-		if(console_switch.upper()=='TRUE'):
-			print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ' + log)
-		if(syslog_switch.upper()=='TRUE'):
-			syslog.syslog(log)
+		log_dispatch(syslog_switch,console_switch,vc,'Inventory check started.')
+		compare(vc,syslog_switch,console_switch,I0,I1)
 		I0 = I1
 		
 def save_inventory(path,file,inventory_file):
@@ -406,8 +409,8 @@ def print_help(command):
 	print(f'{command} inventory <text|csv|json> : Prints the full vCenter virtual machines inventory.')
 	print(f'{command} tree : Prints the virtual environment architecture in a tree format.')
 	print(f'{command} <datacenter|cluster|host|vm> list: Prints all the objects in the list.')
-	print(f'{command} monitor: Logs changes in the virtual environment, the settings need to created and saved first.')
-	print(f'{command} settings: Saves rVcenter settings.')
+	print(f'{command} monitor: Logs changes in the virtual environment, the settings need to be created and saved first.')
+	print(f'{command} settings: Saves rVcenter settings for monitoring, etc.')
 	print(f'{command} help : Prints this help.')
 	print('===========================================================')
 
