@@ -6,22 +6,32 @@
 # 7/1/2020: Version 1.1 released
 # 7/8/2020: Added list and tree switches 
 # 7/8/2020: Version 1.2 released
+# 7/9/2020: Added settings and monitor 
+# 7/9/2020: Version 1.3 released
 
 import json
 import os
 import sys
 import getpass
 import requests
+import time
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 from datetime import datetime
 
-_VERSION = '1.2'
+_VERSION = '1.3'
 _PATH = '.rvc'
 _FILE = 'session.json'
+_SETTINGS_FILE = 'settings.json'
+_INVENTORY_FILE = 'inventory.json'
 _SESSION = requests.Session()
 _SESSION.verify=False
 _SESSION_STATUS = 0
+
+def save_log(path,file,log):
+	with open(path + '/' + file, "a+") as fout:
+		fout.write(log)
+		fout.close()
 
 def save_session_parameters(path,file,vc,username,password):
 	sp = {'vc': vc,  'username': username, 'password': password}
@@ -29,6 +39,11 @@ def save_session_parameters(path,file,vc,username,password):
 		os.makedirs(path)
 	with open(path + '/' + file, 'w') as fout:
 		json.dump(sp, fout)
+
+def load_json(path,file):
+	with open(path + '/' + file,'r') as fin:
+		data = json.load(fin)
+	return data
 
 def load_session_paramters(path,file):
 	with open(path + '/' + file,'r') as fin:
@@ -70,6 +85,16 @@ def session_parameters_input(path,file):
 	password = getpass.getpass()
 	save_session_parameters(path,file,vc,username,password)
 
+def settings_input(path,file):
+	poll_interval = input('Poll interval (seconds): ')
+	logfile = input('Log file: ')
+	console = input('Console output yes|no: ')
+	settings = {'poll_interval': poll_interval, 'logfile': logfile,  'console': console}
+	if not os.path.exists(path):
+		os.makedirs(path)
+	with open(path + '/' + file, 'w') as fout:
+		json.dump(settings, fout)
+
 def get_vms_by_host(vc,host):
 	url = f'https://{vc}/rest/vcenter/vm?filter.hosts.1={host}'
 	vms = session_get_json(_SESSION,url)
@@ -86,7 +111,6 @@ def get_clusters_by_datacenter(vc,datacenter):
 	return clusters
 
 def get_vm_by_name(vc,name):
-	#url = f' https://{vc}/rest/vcenter/vm?filter.names.1={name.upper()}'
 	url = f' https://{vc}/rest/vcenter/vm'
 	vms = session_get_json(_SESSION,url)
 	vmid=''
@@ -95,7 +119,7 @@ def get_vm_by_name(vc,name):
 			vmid = vm.get('vm')
 	return vmid
 
-def get_inventory(path,file,out_format):
+def print_inventory(path,file,out_format):
 	sp = load_session_paramters(path,file)
 	vc=sp.get('vc')
 	url = f'https://{vc}/rest/vcenter/datacenter'
@@ -122,6 +146,98 @@ def get_inventory(path,file,out_format):
 							print(f'{D},{C},{H},{V},{POWER},{CPU},{MEM}')
 						else:
 							print(f'{D}\t{C}\t{H}\t{V}\t{POWER}\t{CPU}\t{MEM}')
+
+def pull_inventory(path,file):
+	sp = load_session_paramters(path,file)
+	vc=sp.get('vc')
+	DICT={}
+	i=0
+	url = f'https://{vc}/rest/vcenter/datacenter'
+	datacenters = session_get_json(_SESSION,url)
+	for datacenter in datacenters:
+		clusters = get_clusters_by_datacenter(vc,datacenter.get('datacenter'))
+		for cluster in clusters:
+			hosts = get_hosts_by_cluster(vc,cluster.get('cluster'))
+			for host in hosts:
+				vms = get_vms_by_host(vc,host.get('host'))
+				for vm in vms:
+					D=datacenter.get('name')
+					C=cluster.get('name')
+					H=host.get('name')
+					V=vm.get('name')
+					ID = vm.get('vm')
+					POWER=vm.get('power_state')
+					CPU=vm.get('cpu_count')
+					MEM=vm.get('memory_size_MiB')
+					DICT_VM={'vmid': ID, 'datacenter': D, 'cluster': C, 'host': H, 'vm': V, 'power_state': POWER, 'cpu_count': CPU, 'memory_size_MiB': MEM}
+					DICT[i] = DICT_VM
+					i+=1
+	return DICT
+
+def vm_compare(ts,vm0,vm1):
+	# VM compare
+	log = ''
+	if((vm0['datacenter']!=vm1['datacenter'])or(vm0['cluster']!=vm1['cluster'])or(vm0['host']!=vm1['host'])):
+		log += f"{ts} {vm0['vm']} moved from {vm0['datacenter']}:{vm0['cluster']}:{vm0['host']} to {vm1['datacenter']}:{vm1['cluster']}:{vm1['host']}\n"
+	if(vm0['power_state']!=vm1['power_state']):
+		log += f"{ts} {vm0['vm']} power state changed from {vm0['power_state']} to {vm1['power_state']}\n"
+	if(vm0['cpu_count']!=vm1['cpu_count']):
+		log += f"{ts} {vm0['vm']} CPU count changed from {vm0['cpu_count']} to {vm1['cpu_count']}\n"
+	if(vm0['memory_size_MiB']!=vm1['memory_size_MiB']):
+		log += f"{ts} {vm0['vm']} RAM changed from {vm0['memory_size_MiB']} to {vm1['memory_size_MiB']}\n"
+	return log
+
+def compare(inventory0,inventory1):
+	ts = f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} [rVcenter]'
+	log = ''
+	for _vm1 in inventory1:
+		found = 0
+		vm1=inventory1[_vm1]
+		for _vm0 in inventory0:
+			vm0=inventory0[_vm0]
+			if(vm0['vmid']==vm1['vmid']):
+				found = 1
+				log += vm_compare(ts,vm0,vm1)
+		if(found==0):
+			log += f"{ts} Added VM {vm1['vm']}: datacenter={vm1['datacenter']}, cluster={vm1['cluster']}, host={vm1['host']}, power state={vm1['power_state']}, cpu={vm1['cpu_count']}, ram={vm1['memory_size_MiB']}\n"
+	for _vm0 in inventory0:
+		vm0=inventory0[_vm0]
+		found = 0
+		for _vm1 in inventory1:
+			vm1=inventory1[_vm1]
+			if(vm0['vmid']==vm1['vmid']):
+				found = 1
+		if(found==0):
+			log += f"{ts} Removed VM {vm0['vm']}: datacenter={vm0['datacenter']}, cluster={vm0['cluster']}, host={vm0['host']}, power state={vm0['power_state']}, cpu={vm0['cpu_count']}, ram={vm0['memory_size_MiB']}\n"	
+	return log
+	
+def monitor(path,file,settings_file):
+	sp = load_session_paramters(path,file)
+	vc=sp.get('vc')
+	settings = load_json(path,settings_file)
+	pi = int(settings.get('poll_interval'))
+	logfile = settings.get('logfile')
+	console = settings.get('console')
+	I0 = pull_inventory(path,file)
+	while True:
+		time.sleep(pi)
+		I1 = pull_inventory(path,file)
+		log = compare(I0,I1)
+		if((len(logfile)>0)and(len(log)>0)):
+			save_log(path,logfile,log)
+		if((console.upper()=='YES')and(len(log)>0)):
+			print(log)
+		I0 = I1
+		
+def save_inventory(path,file,inventory_file):
+	with open(path + '/' + inventory_file, 'w') as fout:
+		inventory = pull_inventory(path,file)
+		json.dump(inventory, fout)
+		
+def load_inventory(path,inventory_file):
+	with open(path + '/' + inventory_file,'r') as fin:
+		inventory = json.load(fin)
+	return inventory			
 
 def get_vm_ID(path,file):
 	name = input('VM Name: ')
@@ -225,7 +341,7 @@ def get_cluster_list(path,file):
 	for cluster in clusters:
 		print(cluster.get('name'))
 
-def get_architecture(path,file):
+def get_tree_architecture(path,file):
 	sp = load_session_paramters(path,file)
 	vc=sp.get('vc')
 	url = f'https://{vc}/rest/vcenter/datacenter'
@@ -285,17 +401,26 @@ def print_help(command):
 	print(f'{command} inventory <text|csv|json> : Prints the full vCenter virtual machines inventory.')
 	print(f'{command} tree : Prints the virtual environment architecture in a tree format.')
 	print(f'{command} <datacenter|cluster|host|vm> list: Prints all the objects in the list.')
+	print(f'{command} monitor: Logs changes in the virtual environment, the settings need to created and saved first.')
+	print(f'{command} settings: Saves rVcenter settings.')
 	print(f'{command} help : Prints this help.')
 	print('===========================================================')
 
 ##########################################################################
 if __name__ == "__main__":
+	if (len(sys.argv)==2 and sys.argv[1]=='monitor'):
+		if(create_session(_PATH,_FILE)):
+			monitor(_PATH,_FILE,_SETTINGS_FILE)
+			
 	if (len(sys.argv)==2 and sys.argv[1]=='session'):
 		session_parameters_input(_PATH,_FILE)
 	
+	if (len(sys.argv)==2 and sys.argv[1]=='settings'):
+		settings_input(_PATH,_SETTINGS_FILE)
+	
 	if (len(sys.argv)==3 and sys.argv[1]=='inventory'):
 		if(create_session(_PATH,_FILE)):
-			get_inventory(_PATH,_FILE,sys.argv[2])
+			print_inventory(_PATH,_FILE,sys.argv[2])
 
 	if (len(sys.argv)==3 and sys.argv[1]=='start'):
 		if(create_session(_PATH,_FILE)):
@@ -330,7 +455,7 @@ if __name__ == "__main__":
 	
 	if (len(sys.argv)==2 and sys.argv[1]=='tree'):
 		if(create_session(_PATH,_FILE)):
-			get_architecture(_PATH,_FILE)
+			get_tree_architecture(_PATH,_FILE)
 ##########################################################################
 
 
