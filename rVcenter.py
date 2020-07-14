@@ -1,4 +1,5 @@
-#!/usr/bin/python3.7
+#! /usr/bin/python
+# tested with python 3.7
 
 # Anis Kochlef (akochlef@gmail.com)
 # 7/1/2020: Version 1.0 released
@@ -250,7 +251,7 @@ def load_inventory(path,inventory_file):
 def get_vm_ID(path,file):
 	name = input('VM Name: ')
 	sp = load_session_paramters(path,file)
-	vc=sp.get('vc')
+	vc=sp.get('vc')vm-154825
 	vm=get_vm_by_name(vc,name)
 	print(vm)
 
@@ -271,6 +272,7 @@ def stop_vm(path,file,name):
 	sp = load_session_paramters(path,file)
 	vc = sp.get('vc')
 	vmid = get_vm_by_name(vc,name)
+	# clean shutdown: POST https://{server}/rest/vcenter/vm/{vm}/guest/power?action=shutdown
 	url = f'https://{vc}/rest/vcenter/vm/{vmid}/power/stop'
 	if(len(vmid)>0): 
 		if (session_post_url(_SESSION,url)==1):

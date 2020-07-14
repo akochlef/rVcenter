@@ -1,3 +1,3 @@
 #! /bin/sh
-sudo cp rVcenter.py /usr/bin/rVcenter
-sudo chmod +x /usr/bin/rVcenter
+sudo cp rVcenter.py /usr/local/bin/rVcenter
+sudo chmod +x /usr/local/bin/rVcenter
