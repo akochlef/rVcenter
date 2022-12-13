@@ -9,6 +9,7 @@
 # 7/8/2020: Version 1.2 released
 # 7/9/2020: Added settings and monitor 
 # 7/9/2020: Version 1.3 released
+# 12/13/2022: Version 1.31 released
 
 import json
 import os
