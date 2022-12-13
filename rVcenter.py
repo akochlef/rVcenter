@@ -251,7 +251,7 @@ def load_inventory(path,inventory_file):
 def get_vm_ID(path,file):
 	name = input('VM Name: ')
 	sp = load_session_paramters(path,file)
-	vc=sp.get('vc')vm-154825
+	vc=sp.get('vc') #vm-154825
 	vm=get_vm_by_name(vc,name)
 	print(vm)
 
